@@ -13,6 +13,11 @@ class GoogleVisionApiHelper
     private $_api_key;
 
     /**
+     * @var array
+     */
+    private $_batchImages = [];
+
+    /**
      * There are only one URL For Now
      * @var string
      */
@@ -172,6 +177,151 @@ class GoogleVisionApiHelper
             default:
                 return $this->_request($base64Image, 'TYPE_UNSPECIFIED');
         }
+    }
+
+    /**
+     * @param $image
+     * @param array $detections
+     * @param bool $download
+     */
+    public function addImage($image, $detections = [], $download = false){
+        $this->_batchImages[] = ['image'=> $image, 'detections'=> $detections, 'download'=>$download ];
+    }
+
+    /**
+     * @param $image
+     * @param bool $download
+     * @return array
+     * @throws Exception
+     */
+    private function _prepareImage($image, $download = false) {
+        $imageType = 'base64';
+
+        if (preg_match("#^https?://.+#", $image) || substr($image,0,1) == '/') {
+            if ($download !== false) {
+                $data = @file_get_contents($image);
+
+                // check file_get_contents failed
+                if ($data === false) {
+                    throw new Exception(sprintf('file_get_contents() failed on “%s”', $image));
+                }
+
+                //  check if file_get_contents returns a valid image
+
+                if (!is_resource(@imagecreatefromstring($data))) {
+                    throw new Exception(sprintf('imagecreatefromstring() failed on “%s”', $image));
+                }
+
+                $image        = base64_encode($data);
+            } else {
+                // if download=false do not download and encode image to base64. Just pass uri to vision api
+                $imageType = 'remote';
+            }
+        }else{
+            $mediaBase64        = explode(";",  $image);
+
+            // Check Undefined offset: 1
+            if (!array_key_exists(1, $mediaBase64)) {
+                throw new Exception("Undefined offset: 1");
+            }
+
+            $image        = explode(",",  $mediaBase64[1]);
+        }
+
+        return ['image'=> $image, 'type'=> $imageType];
+    }
+
+    /**
+     * @param string $json
+     * @param array $images
+     * @return array
+     */
+    private function _batchRequest($json) {
+        $url = $this->_url . $this->_api_key;
+
+        $data = $this->_makeCall($url, $json);
+        //echo $data['raw_response']; exit();
+        $jsonResponse = json_decode($data['raw_response']);
+
+        // init final result array
+        $results = [];
+
+        // results return same order as our request
+        $order = 0;
+        foreach ($this->_batchImages as $image) {
+            $currentResultOfBatch = [];
+            if (isset($image['image']) && isset($image['detections'])) {
+                $result = $jsonResponse->responses[$order];
+
+                // increase for next result
+                $order++;
+
+                // if error returned partially, set error parameters and values of current result
+                if (isset($result->error)) {
+                    $results[] = $result;
+                    continue;
+                }
+
+                // prepare detection types
+                foreach ($image['detections'] as $detection) {
+                    //$currentObjectOfBatch['features'][] = ['type' => $detection, 'maxResults'=> 200];
+
+                    $_type                  = strtolower($detection);
+                    $_type                  = str_replace('_', ' ', $_type);
+                    $_type                  = ucwords($_type);
+                    $_type                  = str_replace(' ', '', $_type);
+                    $parseFunction          = '_parse' . $_type;
+
+                    $currentResultOfBatch[$detection] = $this->$parseFunction($result);
+                }
+
+                $currentResultOfBatch['raw_response'] = $result;
+
+                $results[] = $currentResultOfBatch;
+            }
+        }
+
+        return $results;
+    }
+
+    /**
+     * @param array $images
+     * @return array
+     */
+    public function visionBatch() {
+        $requests = [];
+
+        foreach ($this->_batchImages as $image) {
+            $currentObjectOfBatch = [];
+            if(isset($image['image']) && isset($image['detections'])) {
+
+                $download = false;
+                if(isset($image['download'])) {
+                    $download = $image['download'];
+                }
+
+                // prepare image
+                $imagePrepared = $this->_prepareImage($image['image'], $download);
+                if ($imagePrepared['type'] == 'base64') {
+                    $currentObjectOfBatch['image'] = ['content' => $imagePrepared['image']];
+                } else {
+                    // remote image
+                    $currentObjectOfBatch['image'] = ['source' => ['imageUri' => $imagePrepared['image']]];
+                }
+
+                // prepare detection types
+                foreach ($image['detections'] as $detection) {
+                    $currentObjectOfBatch['features'][] = ['type' => $detection, 'maxResults'=> 200];
+                }
+
+                $requests['requests'][] = $currentObjectOfBatch;
+            }
+        }
+
+        $requestsJson = json_encode($requests);
+
+        return $this->_batchRequest($requestsJson);
+
     }
 
     /**
