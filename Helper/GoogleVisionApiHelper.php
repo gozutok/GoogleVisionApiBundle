@@ -269,7 +269,6 @@ class GoogleVisionApiHelper
 
                     // prepare detection types
                     foreach ($image['detections'] as $detection) {
-                        //$currentObjectOfBatch['features'][] = ['type' => $detection, 'maxResults'=> 200];
 
                         $_type                  = strtolower($detection);
                         $_type                  = str_replace('_', ' ', $_type);
