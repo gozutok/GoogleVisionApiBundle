@@ -128,7 +128,7 @@ class GoogleVisionApiHelper
             }
 
             //  check if file_get_contents returns a valid image
-            
+
             if (!is_resource(@imagecreatefromstring($data))) {
                 throw new Exception(sprintf('imagecreatefromstring() failed on “%s”', $image));
             }
@@ -240,48 +240,54 @@ class GoogleVisionApiHelper
         $url = $this->_url . $this->_api_key;
 
         $data = $this->_makeCall($url, $json);
-        //echo $data['raw_response']; exit();
         $jsonResponse = json_decode($data['raw_response']);
 
-        // init final result array
-        $results = [];
+        if($data['http_code'] != 200) {
+            $data['status']         = $jsonResponse->error->status;
+            $data['message']        = $jsonResponse->error->message;
+            $data['error']          = $jsonResponse->error;
+        }
+        else {
+            // init final result array
+            $data = [];
 
-        // results return same order as our request
-        $order = 0;
-        foreach ($this->_batchImages as $image) {
-            $currentResultOfBatch = [];
-            if (isset($image['image']) && isset($image['detections'])) {
-                $result = $jsonResponse->responses[$order];
+            // results return same order as our request
+            $order = 0;
+            foreach ($this->_batchImages as $image) {
+                $currentResultOfBatch = [];
+                if (isset($image['image']) && isset($image['detections'])) {
+                    $result = $jsonResponse->responses[$order];
 
-                // increase for next result
-                $order++;
+                    // increase for next result
+                    $order++;
 
-                // if error returned partially, set error parameters and values of current result
-                if (isset($result->error)) {
-                    $results[] = $result;
-                    continue;
+                    // if error returned partially, set error parameters and values of current result
+                    if (isset($result->error)) {
+                        $data[] = $result;
+                        continue;
+                    }
+
+                    // prepare detection types
+                    foreach ($image['detections'] as $detection) {
+                        //$currentObjectOfBatch['features'][] = ['type' => $detection, 'maxResults'=> 200];
+
+                        $_type                  = strtolower($detection);
+                        $_type                  = str_replace('_', ' ', $_type);
+                        $_type                  = ucwords($_type);
+                        $_type                  = str_replace(' ', '', $_type);
+                        $parseFunction          = '_parse' . $_type;
+
+                        $currentResultOfBatch[$detection] = $this->$parseFunction($result);
+                    }
+
+                    $currentResultOfBatch['raw_response'] = $result;
+
+                    $data[] = $currentResultOfBatch;
                 }
-
-                // prepare detection types
-                foreach ($image['detections'] as $detection) {
-                    //$currentObjectOfBatch['features'][] = ['type' => $detection, 'maxResults'=> 200];
-
-                    $_type                  = strtolower($detection);
-                    $_type                  = str_replace('_', ' ', $_type);
-                    $_type                  = ucwords($_type);
-                    $_type                  = str_replace(' ', '', $_type);
-                    $parseFunction          = '_parse' . $_type;
-
-                    $currentResultOfBatch[$detection] = $this->$parseFunction($result);
-                }
-
-                $currentResultOfBatch['raw_response'] = $result;
-
-                $results[] = $currentResultOfBatch;
             }
         }
 
-        return $results;
+        return $data;
     }
 
     /**
