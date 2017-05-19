@@ -114,7 +114,9 @@ class GoogleVisionApiHandler
     public static function objectifyLogoAnnotation($obj){
 
         $oLogoAnnotation = new LogoAnnotation();
-        $oLogoAnnotation->setMid($obj->mid);
+        if (isset($obj->mid)) {
+            $oLogoAnnotation->setMid($obj->mid);
+        }
         $oLogoAnnotation->setDescription($obj->description);
         $oLogoAnnotation->setScore($obj->score);
 
