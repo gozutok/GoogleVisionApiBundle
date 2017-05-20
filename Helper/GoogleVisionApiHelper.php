@@ -189,6 +189,14 @@ class GoogleVisionApiHelper
     }
 
     /**
+     * Clear batch image queue
+     * This is important when using batchImages in a loop
+     */
+    public function clear() {
+        $this->_batchImages = [];
+    }
+
+    /**
      * @param $image
      * @param bool $download
      * @return array
@@ -324,6 +332,8 @@ class GoogleVisionApiHelper
         }
 
         $requestsJson = json_encode($requests);
+
+        $this->clear();
 
         return $this->_batchRequest($requestsJson);
 
