@@ -294,6 +294,8 @@ class GoogleVisionApiHelper
             }
         }
 
+        $this->clear();
+
         return $data;
     }
 
@@ -332,8 +334,6 @@ class GoogleVisionApiHelper
         }
 
         $requestsJson = json_encode($requests);
-
-        $this->clear();
 
         return $this->_batchRequest($requestsJson);
 
